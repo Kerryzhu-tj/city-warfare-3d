@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0b111a" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b111a'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%23ff8a3d' stroke-width='1.5'/%3E%3Cpath d='M16 4v7M16 21v7M4 16h7M21 16h7' stroke='%23ff8a3d' stroke-width='1.5'/%3E%3Ccircle cx='16' cy='16' r='1.6' fill='%23ffb066'/%3E%3C/svg%3E" />
+  <title>巷战 3D · 封锁区</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="view" aria-label="3D 城市巷战游戏画面"></canvas>
+
+    <!-- ================= HUD ================= -->
+    <div id="hud" class="hud hidden">
+      <div class="hud-top">
+        <div class="scorebar" aria-label="比分">
+          <span class="team-chip team-chip--red">红</span>
+          <span id="scoreRed" class="score">0</span>
+          <span class="score-sep">:</span>
+          <span id="scoreBlue" class="score">0</span>
+          <span class="team-chip team-chip--blue">蓝</span>
+          <span class="scorebar__goal">目标 <b id="scoreTarget">20</b> 杀</span>
+        </div>
+        <div id="matchTimer" class="match-timer">06:00</div>
+        <button id="btnPause" class="icon-btn" aria-label="暂停游戏">❚❚</button>
+      </div>
+
+      <div class="hud-left">
+        <div class="minimap-wrap">
+          <canvas id="minimap" width="180" height="180"></canvas>
+          <span class="minimap-tag">SECTOR 07</span>
+        </div>
+        <div class="team-line">小队：<span id="hudTeam">红军</span></div>
+      </div>
+
+      <div id="killfeed" class="killfeed" aria-live="polite"></div>
+
+      <div class="crosshair" id="crosshair" aria-hidden="true">
+        <span class="ch ch-t"></span>
+        <span class="ch ch-r"></span>
+        <span class="ch ch-b"></span>
+        <span class="ch ch-l"></span>
+        <span class="ch-dot"></span>
+      </div>
+      <div id="hitmarker" class="hitmarker" aria-hidden="true">
+        <span></span><span></span><span></span><span></span>
+      </div>
+
+      <div class="hud-bottom">
+        <div id="healthPanel" class="health-panel">
+          <div class="panel-label">生命 / VITALS</div>
+          <div class="health-row"><span id="healthValue">100</span><span class="health-max">/ 100</span></div>
+          <div class="bar"><div id="healthFill" class="bar__fill"></div></div>
+        </div>
+
+        <div class="weapon-panel">
+          <div class="panel-label">武器 / LOADOUT</div>
+          <div class="weapon-row">
+            <span id="weaponName" class="weapon-name">自动步枪</span>
+            <span class="ammo"><span id="ammoMag">30</span><span class="ammo-sep">/</span><span id="ammoReserve">210</span></span>
+          </div>
+          <div id="weaponSlots" class="weapon-slots"></div>
+        </div>
+      </div>
+
+      <div class="hud-hint">空格 / 左键 射击 · R 换弹 · G 手榴弹 · F 闪光弹 · V 近战 · 1–8 切换武器 · Esc 暂停</div>
+    </div>
+
+    <div id="lockHint" class="lock-hint hidden" role="status" aria-live="polite"></div>
+
+    <div id="scope" class="scope hidden" aria-hidden="true">
+      <div class="scope__vignette"></div>
+      <div class="scope__h"></div>
+      <div class="scope__v"></div>
+      <div class="scope__ring"></div>
+      <div class="scope__tick scope__tick--t"></div>
+      <div class="scope__tick scope__tick--b"></div>
+      <div class="scope__tick scope__tick--l"></div>
+      <div class="scope__tick scope__tick--r"></div>
+    </div>
+
+    <div id="damageVignette" class="damage-vignette" aria-hidden="true"></div>
+    <div id="damageDirs" class="damage-dirs" aria-hidden="true"></div>
+    <div id="flashOverlay" class="flash-overlay" aria-hidden="true"></div>
+
+    <!-- ================= 阵亡 ================= -->
+    <div id="deathScreen" class="death-screen hidden" aria-live="assertive">
+      <div class="death-screen__inner">
+        <div class="death-kicker">K.I.A.</div>
+        <h2>阵 亡</h2>
+        <p id="deathKiller">终结者：敌军</p>
+        <div class="respawn-line">重新部署 <b id="deathTimer">3.4</b> 秒</div>
+      </div>
+    </div>
+
+    <!-- ================= 主选单 ================= -->
+    <div id="screen-menu" class="screen screen--menu">
+      <div class="menu-scrim"></div>
+      <div class="menu">
+        <header class="brand">
+          <div class="brand__tag"><span class="dot"></span> TACTICAL URBAN COMBAT · 封锁区 07</div>
+          <h1>巷战<span>3D</span></h1>
+          <p class="brand__sub">红蓝两军 · 城市封锁区 · 四人小队死斗</p>
+        </header>
+
+        <div class="menu-grid">
+          <section class="menu-block">
+            <h2 class="menu-heading"><span>01</span> 选择阵营</h2>
+            <div class="side-cards">
+              <button class="side-card side-card--red is-active" data-team="red" aria-pressed="true">
+                <span class="side-card__insignia">红</span>
+                <span class="side-card__text"><strong>红军</strong><small>赤鸦突击队</small></span>
+                <span class="side-card__check"></span>
+              </button>
+              <button class="side-card side-card--blue" data-team="blue" aria-pressed="false">
+                <span class="side-card__insignia">蓝</span>
+                <span class="side-card__text"><strong>蓝军</strong><small>蓝鲨机动队</small></span>
+                <span class="side-card__check"></span>
+              </button>
+            </div>
+          </section>
+
+          <section class="menu-block">
+            <h2 class="menu-heading"><span>02</span> 敌情强度</h2>
+            <div class="diff-cards">
+              <button class="diff-card" data-diff="recruit" aria-pressed="false">
+                <strong>新兵</strong><small>枪法生疏 · 反应迟缓</small>
+              </button>
+              <button class="diff-card is-active" data-diff="veteran" aria-pressed="true">
+                <strong>老兵</strong><small>小队协同 · 攻守有序</small>
+              </button>
+              <button class="diff-card" data-diff="elite" aria-pressed="false">
+                <strong>精英</strong><small>精准火力 · 手雷压制</small>
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <div class="menu-row">
+          <label class="sens" for="sensRange">
+            <span>鼠标灵敏度</span>
+            <input id="sensRange" type="range" min="0.35" max="2.2" step="0.05" value="1" />
+            <output id="sensValue">1.00</output>
+          </label>
+          <button id="muteBtn" class="ghost-btn" type="button">音效：开</button>
+        </div>
+
+        <button id="startBtn" class="deploy-btn" type="button">
+          <span class="deploy-btn__main">进入封锁区</span>
+          <span class="deploy-btn__sub">DEPLOY INTO SECTOR 07</span>
+        </button>
+
+        <footer class="menu-foot">
+          <div class="keyline">
+            <span class="key">WASD</span> 移动
+            <span class="key">Shift</span> 疾走
+            <span class="key">C</span> 蹲下
+            <span class="key">左键 / 空格</span> 射击
+            <span class="key">右键</span> 瞄准
+            <span class="key">R</span> 换弹
+            <span class="key">Esc</span> 暂停
+          </div>
+          <p class="menu-note">建议使用台式机键盘与鼠标；触控设备提供基础操作。游戏不含血腥画面。</p>
+        </footer>
+      </div>
+
+      <aside class="mission">
+        <div class="mission__tag">MISSION BRIEF</div>
+        <h2>清空封锁区</h2>
+        <p>红蓝两军在废弃街区遭遇。率领小队推进，压制敌方火力，率先取得 <b>20</b> 次击杀者控制此区。</p>
+        <ul class="mission__list">
+          <li><span>01</span> 步枪、冲锋枪、狙击枪与手枪自由切换</li>
+          <li><span>02</span> 手榴弹与闪光弹可扭转巷口僵局</li>
+          <li><span>03</span> 近身时匕首与武术能救你一命</li>
+        </ul>
+        <div class="mission__map" aria-hidden="true">
+          <div class="map-grid"></div>
+          <div class="map-block" style="left:8%;top:12%;width:26%;height:22%"></div>
+          <div class="map-block" style="right:10%;top:16%;width:22%;height:28%"></div>
+          <div class="map-block" style="left:14%;bottom:12%;width:30%;height:20%"></div>
+          <div class="map-block" style="right:12%;bottom:16%;width:20%;height:18%"></div>
+          <div class="map-ping map-ping--red" style="left:32%;top:26%"></div>
+          <div class="map-ping map-ping--blue" style="right:28%;bottom:28%"></div>
+        </div>
+        <div class="mission__meta">
+          <div><span>区域</span><b>SECTOR 07</b></div>
+          <div><span>模式</span><b>团队死斗</b></div>
+          <div><span>时限</span><b>06:00</b></div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- ================= 暂停 ================= -->
+    <div id="screen-pause" class="screen screen--center hidden">
+      <div class="panel">
+        <div class="panel__tag">PAUSED</div>
+        <h2>战术暂停</h2>
+        <p class="panel__sub">封锁区仍在你身后。整理装备，再次进入战斗。</p>
+        <div class="panel__actions">
+          <button id="resumeBtn" class="primary-btn" type="button">继续作战</button>
+          <button id="pauseRestart" class="ghost-btn" type="button">重新部署</button>
+          <button id="pauseMenu" class="ghost-btn" type="button">返回主菜单</button>
+        </div>
+        <div class="panel__keys">
+          <span><b>WASD</b> 移动</span><span><b>Shift</b> 疾走</span><span><b>C</b> 蹲下</span>
+          <span><b>空格 / 左键</b> 射击</span><span><b>右键</b> 瞄准</span><span><b>R</b> 换弹</span>
+          <span><b>G</b> 手榴弹</span><span><b>F</b> 闪光弹</span><span><b>V</b> 近战</span>
+          <span><b>1–8</b> 切换武器</span><span><b>M</b> 静音</span><span><b>Esc</b> 暂停</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 结算 ================= -->
+    <div id="screen-results" class="screen screen--center hidden">
+      <div class="panel panel--result">
+        <div id="resultTag" class="panel__tag">任务达成</div>
+        <h2 id="resultTitle" class="result-title is-win">封 锁 区 肃 清</h2>
+        <div id="resultScore" class="result-score"><span class="score-red">0</span><span class="score-sep">:</span><span class="score-blue">0</span></div>
+        <div id="resultStats" class="result-stats"></div>
+        <div class="panel__actions">
+          <button id="rematchBtn" class="primary-btn" type="button">再次部署</button>
+          <button id="resultsMenu" class="ghost-btn" type="button">返回主菜单</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 触控 ================= -->
+    <div id="touchUI" class="touch-ui hidden">
+      <div id="touchStick" class="touch-stick" aria-label="虚拟摇杆">
+        <div class="touch-stick__base"></div>
+        <div id="touchKnob" class="touch-knob"></div>
+      </div>
+      <div class="touch-actions">
+        <button id="btnAim" class="touch-btn touch-btn--aim" type="button">瞄</button>
+        <button id="btnReload" class="touch-btn" type="button">弹</button>
+        <button id="btnSwap" class="touch-btn" type="button">换</button>
+        <button id="btnMelee" class="touch-btn" type="button">刃</button>
+        <button id="btnNade" class="touch-btn" type="button">雷</button>
+        <button id="btnFire" class="touch-btn touch-btn--fire" type="button">射</button>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <div id="loading" class="loading">
+      <div class="loading__mark"><span></span></div>
+      <div id="loadingText" class="loading__text">正在部署 · SECTOR 07</div>
+    </div>
+  </div>
+
+  <script src="vendor/three.min.js"></script>
+  <script src="js/core.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/weapons.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/effects.js"></script>
+  <script src="js/soldier.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/game.js"></script>
+  <script>
+    (function () {
+      function start() {
+        try {
+          window.CW_GAME = new CW.Game();
+          window.CW_GAME.boot();
+        } catch (err) {
+          console.error(err);
+          var box = document.getElementById('loading');
+          var text = document.getElementById('loadingText');
+          if (box) box.classList.remove('hidden');
+          if (text) text.textContent = '启动失败：' + err.message;
+        }
+      }
+      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(start, 30);
+      } else {
+        document.addEventListener('DOMContentLoaded', start);
+      }
+    })();
+  </script>
+</body>
+</html>
